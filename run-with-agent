@@ -1,0 +1,54 @@
+#!/bin/bash
+
+PATH=/usr/local/bin:/usr/bin:/bin:/usr/local/sbin:/usr/sbin:/sbin
+
+progname=$(basename $0)
+socket=/var/run/$(whoami)/ssh-agent.sock
+
+usage() {
+  echo "usage: $progname [-s socket] command"
+  echo ""
+  echo "s socket   the full path to the agent socket"
+}
+
+while getopts hs: opt; do
+  case $opt in
+    h)
+      usage
+      exit 0
+      ;;
+    s)
+      socket=$OPTARG
+      ;;
+    *)
+      usage
+      exit 1
+      ;;
+  esac
+done
+shift $((OPTIND-1))
+
+command="$@"
+if [[ -z $command ]]; then
+  echo "$progname: command is required" >&2
+  exit 1
+fi
+
+export SSH_AUTH_SOCK=$socket
+
+ssh-add -l >/dev/null 2>&1
+agent_rc=$?
+
+case $agent_rc in
+0)
+  exec $command
+  ;;
+1)
+  echo "$progname: ssh-agent is running but no keys are loaded" >&2
+  exit 2
+  ;;
+2)
+  echo "$progname: ssh-agent isn't running" >&2
+  exit 3
+  ;;
+esac

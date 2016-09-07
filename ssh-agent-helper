@@ -1,0 +1,96 @@
+#!/bin/bash
+
+PATH=/usr/local/bin:/usr/bin:/bin:/usr/local/sbin:/usr/sbin:/sbin
+
+progname=$(basename $0)
+keyfile=""
+user=$(whoami)
+sockdir=/var/run/$user
+
+usage() {
+  echo "usage: $progname [-f keyfile] [-s sockdir]"
+  echo ""
+  echo "f keyfile   load the ssh-key in <keyfile>"
+  echo "s sockdir   the directory for the agent socket"
+}
+
+check_agent() {
+  ssh-add -l >/dev/null 2>&1
+  if [[ $? -ne 2 ]]; then
+    return 0
+  fi
+
+  return 1
+}
+
+while getopts hf:s: opt; do
+  case $opt in
+    f)
+      keyfile=$OPTARG
+      ;;
+    h)
+      usage
+      exit 0
+      ;;
+    s)
+      sockdir=$OPTARG
+      ;;
+    *)
+      usage
+      exit 1
+      ;;
+  esac
+done
+shift $((OPTIND-1))
+
+if [[ $# -gt 0 ]]; then
+  echo "$progname: too many arguments" >&2
+  exit 1
+fi
+
+export SSH_AUTH_SOCK=$sockdir/ssh-agent.sock
+
+# bail if we don't have a good place to put our socket
+if [[ ! $sockdir ]]; then
+  echo "ERROR: socket directory doesn't exist" >&2
+  exit 2
+fi
+
+if [[ ! -O $sockdir ]]; then
+  echo "ERROR: bad owner on socket directory (should be 700)" >&2
+  exit 2
+fi
+
+case $(uname -s) in
+Linux)
+  perms=$(stat -c %a $sockdir)
+  ;;
+FreeBSD)
+  perms=$(stat -f %p $sockdir | cut -c 3-5)
+  ;;
+esac
+
+if [[ $perms -ne 700 ]]; then
+  echo "ERROR: bad permissions on socket directory" >&2
+  exit 3
+fi
+
+# if the agent is already running, we don't need to start it
+if ! check_agent; then
+  ssh-agent -a $sockdir/ssh-agent.sock >/dev/null
+  if ! check_agent; then
+    echo "$progname: cannot start ssh-agent" >&2
+    exit 4
+  fi
+fi
+
+# load the key into the agent
+ssh-add $keyfile
+rc=$?
+
+if [[ $rc -eq 1 ]]; then
+  echo "$progname: ssh-agent started but no keys loaded"
+  exit 5
+fi
+
+exit 0

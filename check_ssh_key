@@ -1,0 +1,23 @@
+#!/bin/bash
+
+# check to make sure that a key is loaded into the ssh-agent
+# one argument is required:  the full path to the agent socket
+
+progname=$(basename $0)
+
+if [[ $# -ne 1 ]]; then
+  echo "CRITICAL: must pass socket path to $progname"
+  exit 2
+fi
+socket=$1
+
+env SSH_AUTH_SOCK=$1 ssh-add -l >/dev/null 2>/dev/null
+agent_rc=$?
+
+if [[ $agent_rc -eq 1 || $agent_rc -eq 2 ]]; then
+  echo "CRITICAL: key not loaded"
+  exit 2
+else
+  echo "OK: key is loaded"
+  exit 0
+fi
